@@ -24,8 +24,9 @@ def test_sync_client_get():
     client = SyncClient(
         host="localhost", port="2480", username="root", password="playwithdata"
     )
-    with pytest.raises(requests.exceptions.ConnectionError):
-        client.get(endpoint)
+    # Test that we can make a GET request (should return server info)
+    response = client.get(endpoint)
+    assert response is not None
 
 
 def test_sync_client_post():
@@ -33,5 +34,6 @@ def test_sync_client_post():
     client = SyncClient(
         host="localhost", port="2480", username="root", password="playwithdata"
     )
-    with pytest.raises(requests.exceptions.ConnectionError):
-        client.post(endpoint, payload={})
+    # Test that we can make a POST request with a valid command
+    response = client.post(endpoint, payload={"command": "list databases"})
+    assert response is not None
