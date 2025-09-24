@@ -5,13 +5,7 @@ import logging
 import requests
 
 from retry import retry
-
-class LoginFailedException(Exception):
-    
-    def __init__(self, javaErrorCode, message):
-        self.javaErrorCode = javaErrorCode
-        self.message = message
-        super().__init__(self.message)
+from ..exceptions import LoginFailedException, ConnectionException
 
 
 class Client(ABC):
@@ -32,13 +26,12 @@ class Client(ABC):
             self.post(endpoint_test,  { "command": "list databases" })
             
         except LoginFailedException as e:
-
-            if e.javaErrorCode == "com.arcadedb.server.security.ServerSecurityException":
-                raise ValueError("Invalid credentials")
+            if e.java_error_code == "com.arcadedb.server.security.ServerSecurityException":
+                raise ConnectionException("Invalid credentials", java_error_code=e.java_error_code, detail=e.detail)
             else:
-                raise ValueError("Unable to connect to server : ", e)
+                raise ConnectionException("Unable to connect to server", java_error_code=e.java_error_code, detail=str(e))
         except Exception as e:
-            raise ValueError("Unable to connect to server : ", e)
+            raise ConnectionException("Unable to connect to server", detail=str(e))
         
         
 

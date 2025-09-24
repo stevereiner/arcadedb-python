@@ -163,6 +163,13 @@ cython_debug/
 # VS Code
 .vscode/
 
+# Cursor
+.cursorignore
+.cursorindexingignore
+*.cursormemory
+.cursormemory
+memory-bank/
+
 # macOS
 .DS_Store
 

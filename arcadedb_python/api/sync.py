@@ -1,4 +1,5 @@
-from .client import Client, LoginFailedException
+from .client import Client
+from ..exceptions import LoginFailedException, parse_error_response
 
 import json
 import logging
@@ -57,23 +58,23 @@ class SyncClient(Client):
     def __init__(self, host: str, port: str, protocol: str = "http", **kwargs):
         super().__init__(host, port, protocol, **kwargs)
 
-    def subhandler(self, response: requests.Response, return_headers: bool=False):
-        if response.status_code >= 400 :
-            json_decoded_data = response.json()
-            print(json_decoded_data)
-            java_error_code = json_decoded_data['exception'] if 'exception' in json_decoded_data else "Unknown error"
-            detail_error_code = None
-            if 'detail' in json_decoded_data:
-                detail_error_code = json_decoded_data['detail']
-            elif 'exception' in json_decoded_data:
-                detail_error_code = json_decoded_data['exception']
-            else:
-                detail_error_code = "Unknown error"
+    def subhandler(self, response: requests.Response, return_headers: bool=False, query: str = None):
+        if response.status_code >= 400:
+            try:
+                json_decoded_data = response.json()
+            except json.JSONDecodeError:
+                # If response is not JSON, create a basic error structure
+                json_decoded_data = {
+                    'error': f'HTTP {response.status_code} Error',
+                    'detail': response.text or 'No additional details',
+                    'exception': 'HTTPException'
+                }
             
-            if java_error_code == "com.arcadedb.server.security.ServerSecurityException":
-                raise LoginFailedException(java_error_code, detail_error_code)
-            else:
-                raise Exception(java_error_code, detail_error_code)
+            logging.error(f"ArcadeDB Error Response: {json_decoded_data}")
+            
+            # Use the new exception parsing system
+            exception = parse_error_response(json_decoded_data, query=query)
+            raise exception
         
         response.raise_for_status()
         logging.debug(f"response: {response.text}")
@@ -98,7 +99,9 @@ class SyncClient(Client):
             headers={**self.headers,**extra_headers},
             auth=(self.username, self.password),
         )
-        return self.subhandler(response, return_headers=return_headers)
+        # Extract query from payload for better error reporting
+        query = payload.get('command') if isinstance(payload, dict) else None
+        return self.subhandler(response, return_headers=return_headers, query=query)
 
     def get(self, endpoint: str, return_headers: bool=False, extra_headers: dict = {}) -> requests.Response:
         endpoint = self._get_endpoint(endpoint)

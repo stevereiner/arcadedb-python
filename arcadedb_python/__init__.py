@@ -21,7 +21,7 @@ Classes:
 For more information, visit: https://docs.arcadedb.com/
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Adams Rosales, ExtReMLapin, Steve Reiner"
 __email__ = ""
 __license__ = "Apache-2.0"
@@ -29,12 +29,34 @@ __license__ = "Apache-2.0"
 # Import main classes for easy access
 from arcadedb_python.dao.database import DatabaseDao
 from arcadedb_python.api.sync import SyncClient
-from arcadedb_python.api.client import Client, LoginFailedException
+from arcadedb_python.api.client import Client
+from arcadedb_python.exceptions import (
+    ArcadeDBException,
+    LoginFailedException,
+    QueryParsingException,
+    TransactionException,
+    SchemaException,
+    DatabaseException,
+    ConnectionException,
+    ValidationException,
+    BulkOperationException,
+    VectorOperationException,
+)
 
 __all__ = [
     "DatabaseDao",
     "SyncClient", 
     "Client",
+    # Exceptions
+    "ArcadeDBException",
     "LoginFailedException",
+    "QueryParsingException",
+    "TransactionException",
+    "SchemaException",
+    "DatabaseException",
+    "ConnectionException",
+    "ValidationException",
+    "BulkOperationException",
+    "VectorOperationException",
     "__version__",
 ]

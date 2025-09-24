@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arcadedb-python"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python driver for ArcadeDB - Multi-Model Database with Graph, Document, Key-Value, Vector, and Time-Series support"
 readme = "README.md"
 license = "Apache-2.0"
