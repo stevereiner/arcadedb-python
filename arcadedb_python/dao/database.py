@@ -181,12 +181,14 @@ class DatabaseDao:
         if not PYGMENTS_AVAILABLE:
             # Fallback to simple parameter substitution if pygments not available
             import re
+
             def replace_param(match):
                 param_name = match.group(1)
                 if param_name in params:
                     value = params[param_name]
                     if isinstance(value, str):
-                        return f"'{value.replace('\\', '\\\\').replace('\'', '\\\'')}'"
+                        escaped_value = value.replace('\\', '\\\\').replace("'", "\\'")
+                        return f"'{escaped_value}'"
                     return str(value)
                 return match.group(0)
             
@@ -197,9 +199,9 @@ class DatabaseDao:
         tokens = list(cypher_lexer.get_tokens(query))
         i = 0
         len_tokens = len(tokens)
-        while i < len_tokens-1:
-            if tokens[i][0] == punctuation and tokens[i+1][0] == global_var:
-                var_name = tokens[i+1][1]
+        while i < len_tokens - 1:
+            if tokens[i][0] == punctuation and tokens[i + 1][0] == global_var:
+                var_name = tokens[i + 1][1]
                 assert var_name in params, f"Variable {var_name} not found in the parameters"
                 if isinstance(params[var_name], str) and '$' in params[var_name]:
                     skipped_params[var_name] = params[var_name]
@@ -209,11 +211,10 @@ class DatabaseDao:
                     skipped_params[var_name] = params[var_name]
                     i += 2
                     continue
-                
-                
-                escaped_string = str(params[var_name]).replace('\\', '\\\\').replace('\'', '\\\'')
+
+                escaped_string = str(params[var_name]).replace("\\", "\\\\").replace("'", "\\'")
                 tokens[i] = (string_liral, f"'{escaped_string}'")
-                tokens.pop(i+1)
+                tokens.pop(i + 1)
                 len_tokens -= 1
     
             i += 1
@@ -761,7 +762,8 @@ class DatabaseDao:
                     properties = []
                     for key, value in record.items():
                         if isinstance(value, str):
-                            properties.append(f"{key} = '{value.replace('\'', '\\\'')}'")
+                            escaped_value = value.replace("'", "\\'")
+                            properties.append(f"{key} = '{escaped_value}'")
                         elif isinstance(value, (list, dict)):
                             # Handle JSON data
                             json_value = json.dumps(value).replace("'", "\\'")
@@ -847,10 +849,11 @@ class DatabaseDao:
                     # Build property assignments
                     properties = []
                     key_value = record[key_field]
-                    
+
                     for key, value in record.items():
                         if isinstance(value, str):
-                            properties.append(f"{key} = '{value.replace('\'', '\\\'')}'")
+                            escaped_value = value.replace("'", "\\'")
+                            properties.append(f"{key} = '{escaped_value}'")
                         elif isinstance(value, (list, dict)):
                             # Handle JSON data
                             json_value = json.dumps(value).replace("'", "\\'")
@@ -861,10 +864,11 @@ class DatabaseDao:
                     if properties:
                         prop_str = ", ".join(properties)
                         if isinstance(key_value, str):
-                            key_condition = f"{key_field} = '{key_value.replace('\'', '\\\'')}'"
+                            escaped_key = key_value.replace("'", "\\'")
+                            key_condition = f"{key_field} = '{escaped_key}'"
                         else:
                             key_condition = f"{key_field} = {key_value}"
-                            
+
                         upsert_statements.append(f"UPDATE {type_name} SET {prop_str} UPSERT WHERE {key_condition}")
                 
                 if upsert_statements:
