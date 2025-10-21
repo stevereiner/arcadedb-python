@@ -49,7 +49,7 @@ class Client(ABC):
         default = "application/json"
         key = "content_type"
         if key not in self.kwargs:
-            logging.warning(f"No content type, defaulting to {default}")
+            logging.debug(f"No content type specified, using default: {default}")
         content_type = self.kwargs.get(key, default)
         return {"Content-Type": content_type}
 

@@ -5,6 +5,31 @@ All notable changes to the ArcadeDB Python Driver will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.3.1] - 20025-10-21
+
+**Bug fixes for 0.3.1, README.md now has correct Quick Start Code, docs/API.md added, examples added**
+
+## Fixed
+- In release 0.3.1 will include bug #1 fix (Can't instantiate DatabaseDao). Was fixed with pull request (merged in) #2 Fix string escaping in query parameters and property assignments. This didn't show up with python 3.12, 3.13,  but did with python 3.10, 3.11
+Was fixed in `dao/database.py` with different code for escaping parameters and property assignments.
+- For bug #3 Quick Start: Basic Usage fails, the README.md quick start was updated to have the correct working code to upe
+
+### Documentation
+- Updated `README.md`:  the `README.md` now has the correct working quick start SQL code (have to use SyncClient and give to DatabaseDao, etc), added links to `docs/API.md`, 2 examples/ files, added cypher and gremlin code
+- Added `docs/API.md` documenting the classes and functions / parameters, 4 temp docs while developing removed
+
+### Added
+- In examples/  added `quickstart_example.py` with quick start code from `README.md`, `test_query_langages.py` with cypher and gremlin code from `README.md`, `enhanced_features_demo.py` from development removed
+
+### Changed
+- Updated `pyproject.toml` to have release 0.3.1 
+- `pyproject.toml`, `manifest.in`: docs and examples added to source release
+- `client.py` headers() no content type logging level changed from warning to debug
+- `sync.py` get() and post() logging level changed from info to debug (now won't see all sql calls by default), 
+- `__init__.py` updated to version 0.3.1
+
+
 ## [0.3.0] - 2025-09-23
 
 **Major Enhancement Release for LlamaIndex Integration**

@@ -92,7 +92,7 @@ class SyncClient(Client):
     def post(self, endpoint: str, payload: dict, return_headers: bool=False, extra_headers: dict = {}) -> requests.Response:
         endpoint = self._get_endpoint(endpoint)
         filtered_payload = _filter_payload_for_log(payload)
-        logging.info(f"posting to {endpoint} with payload {filtered_payload}")
+        logging.debug(f"posting to {endpoint} with payload {filtered_payload}")
         response = requests.post(
             endpoint,
             data=json.dumps(payload),
@@ -105,7 +105,7 @@ class SyncClient(Client):
 
     def get(self, endpoint: str, return_headers: bool=False, extra_headers: dict = {}) -> requests.Response:
         endpoint = self._get_endpoint(endpoint)
-        logging.info(f"submitting get request to {endpoint}")
+        logging.debug(f"submitting get request to {endpoint}")
         response = requests.get(
             endpoint,
             auth=(self.username, self.password),

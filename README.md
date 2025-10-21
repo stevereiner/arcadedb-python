@@ -70,63 +70,85 @@ uv pip install arcadedb-python[dev]
 ### Basic Usage
 
 ```python
-from arcadedb_python import DatabaseDao
+from arcadedb_python import DatabaseDao, SyncClient
 
-# Connect to ArcadeDB
-db = DatabaseDao(
+# Step 1: Create a client connection
+client = SyncClient(
     host="localhost",
     port=2480,
-    database="mydb",
     username="root",
     password="playwithdata"
 )
 
-# Execute SQL queries
-result = db.query("sql", "SELECT FROM V LIMIT 10")
+# Step 2: Connect to database (or create it)
+if not DatabaseDao.exists(client, "mydb"):
+    db = DatabaseDao.create(client, "mydb")
+else:
+    db = DatabaseDao(client, "mydb")
+
+# Step 3: Create schema (DDL requires is_command=True)
+db.query("sql", "CREATE VERTEX TYPE Person IF NOT EXISTS", is_command=True)
+
+# Step 4: Insert data (DML requires is_command=True)
+db.query("sql", "INSERT INTO Person SET name = 'John', age = 30", is_command=True)
+
+# Step 5: Query data
+result = db.query("sql", "SELECT FROM Person LIMIT 10")
 print(result)
 
-# Create vertices and edges
-db.command("sql", "CREATE VERTEX TYPE Person")
-db.command("sql", "INSERT INTO Person SET name = 'John', age = 30")
-
-# Graph traversal
+# Step 6: Graph traversal
 result = db.query("sql", """
     MATCH {type: Person, as: person} 
     RETURN person.name, person.age
 """)
+print(result)
 ```
 
-### Configuration
+### Important Notes
 
-```python
-from arcadedb_python import ArcadeDBConfig, DatabaseDao
-
-# Using configuration object
-config = ArcadeDBConfig(
-    host="localhost",
-    port=2480,
-    username="root",
-    password="playwithdata"
-)
-
-db = DatabaseDao.from_config(config, "mydb")
+- **Use `SyncClient`** to create connections, not `DatabaseDao` directly
+- **Use `is_command=True`** for DDL/DML operations (CREATE, INSERT, UPDATE, DELETE)
+- **SELECT queries** don't need `is_command=True` (it defaults to False)
+- **Create vertex types first** before querying (V and E types don't exist by default)
 ```
 
-### Async Operations
+## API Documentation
 
-```python
-import asyncio
-from arcadedb_python import DatabaseDao
+For complete API reference including all methods, parameters, exceptions, and detailed examples:
 
-async def main():
-    db = DatabaseDao("localhost", 2480, "mydb", "root", "playwithdata")
-    
-    # Async query execution
-    result = await db.query_async("sql", "SELECT FROM V LIMIT 10")
-    print(result)
+**📚 [docs/API.md](docs/API.md)** - Comprehensive API documentation covering:
+- `SyncClient` - Connection management
+- `DatabaseDao` - All database operations (query, transactions, bulk operations)
+- Exception handling and error types
+- Configuration options
+- Complete code examples
 
-asyncio.run(main())
+## Examples
+
+### Available Examples
+
+**[examples/quickstart_example.py](examples/quickstart_example.py)**
+- Complete walkthrough of all Quick Start code
+- All data models: Graph, Document, Key-Value, Time-Series, Vector storage
+- Step-by-step explanations
+- Error handling examples
+
+**[examples/test_query_languages.py](examples/test_query_languages.py)**
+- openCypher query examples
+- Gremlin query examples
+- Database creation and cleanup
+
+### Running Examples
+
+```bash
+# Complete quickstart with all features
+python examples/quickstart_example.py
+
+# Test openCypher and Gremlin queries
+python examples/test_query_languages.py
 ```
+
+**Requirements:** ArcadeDB must be running on `localhost:2480` with default credentials (`root`/`playwithdata`)
 
 ## Advanced Usage
 
@@ -134,8 +156,8 @@ asyncio.run(main())
 
 ```python
 # Document operations
-db.command("sql", "CREATE DOCUMENT TYPE Product")
-db.command("sql", """
+db.query("sql", "CREATE DOCUMENT TYPE Product IF NOT EXISTS", is_command=True)
+db.query("sql", """
     INSERT INTO Product CONTENT {
         "name": "Laptop",
         "price": 999.99,
@@ -144,70 +166,118 @@ db.command("sql", """
             "ram": "16GB"
         }
     }
-""")
+""", is_command=True)
 
 # Graph operations
-db.command("sql", "CREATE VERTEX TYPE Customer")
-db.command("sql", "CREATE EDGE TYPE Purchased")
-db.command("sql", """
+db.query("sql", "CREATE VERTEX TYPE Customer IF NOT EXISTS", is_command=True)
+db.query("sql", "CREATE EDGE TYPE Purchased IF NOT EXISTS", is_command=True)
+db.query("sql", """
     CREATE EDGE Purchased 
     FROM (SELECT FROM Customer WHERE name = 'John')
     TO (SELECT FROM Product WHERE name = 'Laptop')
-    SET date = date(), amount = 999.99
-""")
+    SET date = sysdate(), amount = 999.99
+""", is_command=True)
 
 # Key-Value operations
-db.command("sql", "CREATE DOCUMENT TYPE Settings")
-db.command("sql", "INSERT INTO Settings SET key = 'theme', value = 'dark'")
+db.query("sql", "CREATE DOCUMENT TYPE Settings IF NOT EXISTS", is_command=True)
+db.query("sql", "INSERT INTO Settings SET key = 'theme', value = 'dark'", is_command=True)
 
 # Time-Series operations
-db.command("sql", "CREATE VERTEX TYPE Sensor")
-db.command("sql", """
+db.query("sql", "CREATE VERTEX TYPE Sensor IF NOT EXISTS", is_command=True)
+db.query("sql", """
     INSERT INTO Sensor SET 
     sensor_id = 'temp_01', 
     timestamp = sysdate(), 
     temperature = 23.5
-""")
+""", is_command=True)
 ```
 
 ### Vector Search (for AI/ML applications)
 
 ```python
-# Store embeddings
-db.command("sql", """
-    CREATE VERTEX TYPE Document SET 
-    title = 'AI Research Paper',
-    embedding = [0.1, 0.2, 0.3, ...],  # Your vector embeddings
-    content = 'Full document text...'
-""")
+# Note: Vector similarity search is not currently supported by this driver
+# You can store vector embeddings as arrays
 
-# Vector similarity search
-result = db.query("sql", """
-    SELECT title, content, 
-           cosine_similarity(embedding, [0.1, 0.2, 0.3, ...]) as similarity
-    FROM Document 
-    ORDER BY similarity DESC 
-    LIMIT 10
-""")
+# Store embeddings
+db.query("sql", "CREATE VERTEX TYPE DocRecord IF NOT EXISTS", is_command=True)
+db.query("sql", """
+    INSERT INTO DocRecord SET 
+    title = 'AI Research Paper',
+    embedding = [0.1, 0.2, 0.3, 0.4, 0.5],
+    content = 'Full document text...'
+""", is_command=True)
+
+# Query documents with embeddings
+result = db.query("sql", "SELECT title, embedding FROM DocRecord WHERE title = 'AI Research Paper'")
+```
+
+### Using openCypher
+
+```python
+# Note: openCypher support may have different performance characteristics than native SQL
+# For large operations, consider using ArcadeDB's native SQL or Java API
+
+# Create nodes
+db.query("cypher", "CREATE (p:Person {name: 'John', age: 30})", is_command=True)
+db.query("cypher", "CREATE (p:Person {name: 'Jane', age: 25})", is_command=True)
+
+# Create relationship
+db.query("cypher", """
+    MATCH (a:Person {name: 'John'}), (b:Person {name: 'Jane'})
+    CREATE (a)-[:KNOWS]->(b)
+""", is_command=True)
+
+# Query with openCypher
+result = db.query("cypher", "MATCH (p:Person) RETURN p.name, p.age")
+print(result)
+```
+
+### Using Gremlin
+
+```python
+# Note: Gremlin support may have different performance characteristics than native SQL
+# For large operations, consider using ArcadeDB's native SQL or Java API
+
+# Add vertices
+db.query("gremlin", "g.addV('Person').property('name', 'John').property('age', 30)", is_command=True)
+db.query("gremlin", "g.addV('Person').property('name', 'Jane').property('age', 25)", is_command=True)
+
+# Query with Gremlin
+result = db.query("gremlin", "g.V().hasLabel('Person').values('name')")
+print(result)
+
+# Traversal
+result = db.query("gremlin", "g.V().hasLabel('Person').has('age', gt(20)).values('name', 'age')")
+print(result)
 ```
 
 ## Configuration Options
+
+### SyncClient Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `host` | str | "localhost" | ArcadeDB server hostname |
 | `port` | int | 2480 | ArcadeDB server port |
-| `username` | str | "root" | Database username |
+| `username` | str | None | Database username |
 | `password` | str | None | Database password |
-| `database` | str | None | Database name |
-| `use_ssl` | bool | False | Enable SSL connection |
-| `timeout` | int | 30 | Request timeout in seconds |
-| `pool_size` | int | 10 | Connection pool size |
+| `protocol` | str | "http" | Protocol ("http" or "https") |
+
+### DatabaseDao.query() Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `language` | str | Required | Query language: "sql", "cypher", "gremlin", "graphql", "mongo" |
+| `command` | str | Required | The query/command to execute |
+| `is_command` | bool | False | Set True for DDL/DML (CREATE, INSERT, UPDATE, DELETE) |
+| `limit` | int | None | Maximum number of results |
+| `params` | dict | None | Query parameters |
+| `session_id` | str | None | Transaction session ID |
 
 ## Requirements
 
-- **Python**: 3.8 or higher
-- **ArcadeDB**: Version 23.10 or higher
+- **Python**: 3.10 or higher
+- **ArcadeDB**: Version 25.8.1 or higher
 - **Dependencies**: 
   - `requests` >= 2.25.0
   - `retry` >= 0.9.2

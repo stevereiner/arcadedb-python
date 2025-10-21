@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arcadedb-python"
-version = "0.3.0"
+version = "0.3.1"
 description = "Python driver for ArcadeDB - Multi-Model Database with Graph, Document, Key-Value, Vector, and Time-Series support"
 readme = "README.md"
 license = "Apache-2.0"
@@ -76,9 +76,18 @@ Changelog = "https://github.com/stevereiner/arcadedb-python/blob/main/CHANGELOG.
 include = [
     "arcadedb_python/",
     "tests/",
+    "docs/",
+    "examples/",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
+    "pyproject.toml",
+]
+exclude = [
+    ".venv*",
+    "backup/",
+    "dist/",
+    "build/",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -89,7 +98,7 @@ path = "arcadedb_python/__init__.py"
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
