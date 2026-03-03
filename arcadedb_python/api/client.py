@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 import logging
 import requests
 
+logger = logging.getLogger(__name__)
+
 from retry import retry
 from ..exceptions import LoginFailedException, ConnectionException
 
@@ -49,7 +51,7 @@ class Client(ABC):
         default = "application/json"
         key = "content_type"
         if key not in self.kwargs:
-            logging.debug(f"No content type specified, using default: {default}")
+            logger.debug(f"No content type specified, using default: {default}")
         content_type = self.kwargs.get(key, default)
         return {"Content-Type": content_type}
 
@@ -63,7 +65,11 @@ class Client(ABC):
 
     @property
     def password(self) -> str:
-        return self.kwargs.get("password") or self.kwargs.get("pw")
+        # Use explicit None check so empty string "" is preserved as a valid password
+        pw = self.kwargs.get("password")
+        if pw is None:
+            pw = self.kwargs.get("pw")
+        return pw if pw is not None else ""
 
     def __repr__(self) -> str:
         return f"<host={self.host} port={self.port} user={self.username}>"

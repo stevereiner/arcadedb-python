@@ -4,27 +4,27 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/arcadedb-python.svg)](https://pypi.org/project/arcadedb-python/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A comprehensive Python driver for [ArcadeDB](https://arcadedb.com) - the Multi-Model Database that supports Graph, Document, Key-Value, Vector, and Time-Series models in a single engine.
+A comprehensive Python driver for [ArcadeDB](https://arcadedb.com) - the Multi-Model Database that supports Graph, Document, Key-Value, Vector, and Time-Series models in a single engine.   [Github for ArcadeDB](https://github.com/ArcadeData/arcadedb) (Apache 2.0).
+
+> **Note:** This package connects to an **ArcadeDB server over REST/HTTP**. If you need to run ArcadeDB **embedded directly inside your Python application** (no separate server process), see [arcadedb-embedded-python](https://github.com/humemai/arcadedb-embedded-python) instead.
 
 ## Credits & Attribution
 
-This driver builds upon the excellent work of the original ArcadeDB Python driver contributors:
+This driver builds upon the work of the original ArcadeDB Python driver contributors:
 
 - **Adams Rosales** ([@adaros92](https://github.com/adaros92)) - Original [arcadedb-python-driver](https://github.com/adaros92/arcadedb-python-driver)
 - **ExtReMLapin** ([@ExtReMLapin](https://github.com/ExtReMLapin)) - Core contributor and enhancements
-- **ArcadeDB Team** - The amazing [ArcadeDB](https://github.com/ArcadeData/arcadedb) database engine
 
-This modernized version enhances the original work with updated packaging, comprehensive documentation, and production-ready features while maintaining full compatibility with the [ArcadeDB](https://arcadedb.com/) database.
+This modernized version enhances the original work with updated packaging, documentation, tests, new APIs, vector support, etc.
 
 ## Features
 
 - **Multi-Model Support**: Work with Graph, Document, Key-Value, Vector, and Time-Series data models
-- **High Performance**: Optimized for speed with native ArcadeDB protocols
-- **Full API Coverage**: Complete access to ArcadeDB's REST API and SQL capabilities
-- **Type Safety**: Comprehensive type hints for better development experience
-- **Async Support**: Both synchronous and asynchronous operation modes
-- **Connection Pooling**: Efficient connection management for production use
-- **Comprehensive Testing**: Extensive test suite ensuring reliability
+- **Full API Coverage**: Complete access to ArcadeDB's REST API with SQL, openCypher, Gremlin, GraphQL, and Mongo query languages
+- **Vector Search**: Native LSM_VECTOR index support with `vectorNeighbors()` for AI/ML similarity search
+- **Bulk Operations**: `bulk_insert`, `bulk_upsert`, `bulk_delete` using `sqlscript` for efficient batched writes
+- **Type Annotations**: Type hints on all public methods for better IDE support
+- **Comprehensive Testing**: Full integration test suite (59 tests) against a live ArcadeDB server
 
 ## Installation
 
@@ -109,8 +109,7 @@ print(result)
 - **Use `SyncClient`** to create connections, not `DatabaseDao` directly
 - **Use `is_command=True`** for DDL/DML operations (CREATE, INSERT, UPDATE, DELETE)
 - **SELECT queries** don't need `is_command=True` (it defaults to False)
-- **Create vertex types first** before querying (V and E types don't exist by default)
-```
+- **`IF NOT EXISTS`** is supported for `DOCUMENT TYPE`, `VERTEX TYPE`, and `EDGE TYPE`
 
 ## API Documentation
 
@@ -152,10 +151,12 @@ python examples/test_query_languages.py
 
 ## Advanced Usage
 
-### Working with Different Data Models
+### Document Operations
+
+Documents are schema-flexible records. They cannot be endpoints of edges.
+Vertices are documents with added capability: they can be connected by edges.
 
 ```python
-# Document operations
 db.query("sql", "CREATE DOCUMENT TYPE Product IF NOT EXISTS", is_command=True)
 db.query("sql", """
     INSERT INTO Product CONTENT {
@@ -168,21 +169,49 @@ db.query("sql", """
     }
 """, is_command=True)
 
-# Graph operations
+result = db.query("sql", "SELECT FROM Product")
+print(result)
+```
+
+### Graph Operations
+
+Edges connect **vertex** types only. Both the source and target must be `VERTEX TYPE`.
+
+```python
+# Create vertex types for both ends of the edge
 db.query("sql", "CREATE VERTEX TYPE Customer IF NOT EXISTS", is_command=True)
+db.query("sql", "CREATE VERTEX TYPE ItemType IF NOT EXISTS", is_command=True)
 db.query("sql", "CREATE EDGE TYPE Purchased IF NOT EXISTS", is_command=True)
+
+# Insert vertices
+db.query("sql", "INSERT INTO Customer SET name = 'Alice'", is_command=True)
+db.query("sql", "INSERT INTO ItemType SET name = 'Laptop', price = 999.99", is_command=True)
+
+# Connect them with an edge
 db.query("sql", """
-    CREATE EDGE Purchased 
-    FROM (SELECT FROM Customer WHERE name = 'John')
-    TO (SELECT FROM Product WHERE name = 'Laptop')
+    CREATE EDGE Purchased
+    FROM (SELECT FROM Customer WHERE name = 'Alice')
+    TO (SELECT FROM ItemType WHERE name = 'Laptop')
     SET date = sysdate(), amount = 999.99
 """, is_command=True)
 
-# Key-Value operations
+# Traverse the graph
+result = db.query("sql", """
+    SELECT expand(out('Purchased')) FROM Customer WHERE name = 'Alice'
+""")
+print(result)
+```
+
+### Key-Value Operations
+
+```python
 db.query("sql", "CREATE DOCUMENT TYPE Settings IF NOT EXISTS", is_command=True)
 db.query("sql", "INSERT INTO Settings SET key = 'theme', value = 'dark'", is_command=True)
+```
 
-# Time-Series operations
+### Time-Series Operations
+
+```python
 db.query("sql", "CREATE VERTEX TYPE Sensor IF NOT EXISTS", is_command=True)
 db.query("sql", """
     INSERT INTO Sensor SET 
@@ -195,40 +224,58 @@ db.query("sql", """
 ### Vector Search (for AI/ML applications)
 
 ```python
-# Note: Vector similarity search is not currently supported by this driver
-# You can store vector embeddings as arrays
+# Declare the vector property and create an LSM vector index
+db.query("sql", "CREATE VERTEX TYPE DocRecord", is_command=True)
+db.query("sql", "CREATE PROPERTY DocRecord.embedding ARRAY_OF_FLOATS", is_command=True)
+db.create_vector_index("DocRecord", "embedding", dimensions=4)
 
-# Store embeddings
-db.query("sql", "CREATE VERTEX TYPE DocRecord IF NOT EXISTS", is_command=True)
+# Insert documents with embeddings (use CONTENT for structured inserts)
 db.query("sql", """
-    INSERT INTO DocRecord SET 
-    title = 'AI Research Paper',
-    embedding = [0.1, 0.2, 0.3, 0.4, 0.5],
-    content = 'Full document text...'
+    INSERT INTO DocRecord CONTENT {
+        "title": "AI Research Paper",
+        "embedding": [0.1, 0.2, 0.3, 0.4],
+        "content": "Full document text..."
+    }
+""", is_command=True)
+db.query("sql", """
+    INSERT INTO DocRecord CONTENT {
+        "title": "Machine Learning Guide",
+        "embedding": [0.9, 0.8, 0.7, 0.6],
+        "content": "Intro to ML..."
+    }
 """, is_command=True)
 
-# Query documents with embeddings
-result = db.query("sql", "SELECT title, embedding FROM DocRecord WHERE title = 'AI Research Paper'")
+# Perform vector similarity search
+results = db.vector_search(
+    type_name="DocRecord",
+    embedding_field="embedding",
+    query_embedding=[0.1, 0.2, 0.3, 0.4],
+    top_k=2
+)
+for doc in results:
+    print(doc["title"])
 ```
 
 ### Using openCypher
 
+> **Note:** Use `"opencypher"` as the language to target ArcadeDB's native openCypher engine,
+> introduced in recent releases. The older `"cypher"` language identifier used a Cypher
+> implementation built on top of Gremlin and is now superseded by this native engine.
+
 ```python
-# Note: openCypher support may have different performance characteristics than native SQL
-# For large operations, consider using ArcadeDB's native SQL or Java API
 
 # Create nodes
-db.query("cypher", "CREATE (p:Person {name: 'John', age: 30})", is_command=True)
-db.query("cypher", "CREATE (p:Person {name: 'Jane', age: 25})", is_command=True)
+db.query("opencypher", "CREATE (p:Person {name: 'John', age: 30})", is_command=True)
+db.query("opencypher", "CREATE (p:Person {name: 'Jane', age: 25})", is_command=True)
 
 # Create relationship
-db.query("cypher", """
+db.query("opencypher", """
     MATCH (a:Person {name: 'John'}), (b:Person {name: 'Jane'})
     CREATE (a)-[:KNOWS]->(b)
 """, is_command=True)
 
 # Query with openCypher
-result = db.query("cypher", "MATCH (p:Person) RETURN p.name, p.age")
+result = db.query("opencypher", "MATCH (p:Person) RETURN p.name, p.age")
 print(result)
 ```
 
@@ -267,7 +314,7 @@ print(result)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `language` | str | Required | Query language: "sql", "cypher", "gremlin", "graphql", "mongo" |
+| `language` | str | Required | Query language: "sql", "opencypher", "gremlin", "graphql", "mongo" |
 | `command` | str | Required | The query/command to execute |
 | `is_command` | bool | False | Set True for DDL/DML (CREATE, INSERT, UPDATE, DELETE) |
 | `limit` | int | None | Maximum number of results |

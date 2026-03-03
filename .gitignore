@@ -169,6 +169,7 @@ cython_debug/
 *.cursormemory
 .cursormemory
 memory-bank/
+.cursor/
 
 # macOS
 .DS_Store

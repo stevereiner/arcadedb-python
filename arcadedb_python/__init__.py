@@ -22,8 +22,13 @@ Classes:
 
 Constants:
     AVAILABLE_LANGUAGES: Set of supported query languages 
-        {"sql", "sqlscript", "graphql", "cypher", "gremlin", "mongo"}
-    
+        {"sql", "sqlscript", "graphql", "opencypher", "gremlin", "mongo"}
+
+Logging:
+    configure_logging: Configure log levels for the package or individual modules
+    get_logger: Retrieve a named logger by module path or short alias
+    LOGGER_NAMES: Mapping of short aliases to full logger names
+
 Exceptions:
     ArcadeDBException: Base exception class
     LoginFailedException: Authentication failure
@@ -39,8 +44,8 @@ Exceptions:
 For more information, visit: https://docs.arcadedb.com/
 """
 
-__version__ = "0.3.1"
-__author__ = "Adams Rosales, ExtReMLapin, Steve Reiner"
+__version__ = "0.4.0"
+__author__ = "Steve Reiner, Adams Rosales, ExtReMLapin"
 __email__ = ""
 __license__ = "Apache-2.0"
 
@@ -49,6 +54,7 @@ from arcadedb_python.dao.database import DatabaseDao
 from arcadedb_python.api.sync import SyncClient
 from arcadedb_python.api.client import Client
 from arcadedb_python.api.config import AVAILABLE_LANGUAGES
+from arcadedb_python.logging_config import configure_logging, get_logger, LOGGER_NAMES
 from arcadedb_python.exceptions import (
     ArcadeDBException,
     LoginFailedException,
@@ -64,9 +70,13 @@ from arcadedb_python.exceptions import (
 
 __all__ = [
     "DatabaseDao",
-    "SyncClient", 
+    "SyncClient",
     "Client",
     "AVAILABLE_LANGUAGES",
+    # Logging
+    "configure_logging",
+    "get_logger",
+    "LOGGER_NAMES",
     # Exceptions
     "ArcadeDBException",
     "LoginFailedException",

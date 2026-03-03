@@ -89,7 +89,8 @@ def main():
     print("Advanced Usage - Different Data Models")
     print("=" * 70)
     
-    # Document operations
+    # Document operations (documents are schema-flexible records; they cannot be edge endpoints)
+    # Vertices are documents with added capability: they can be connected by edges
     print("\n[7] Document operations...")
     db.query("sql", "CREATE DOCUMENT TYPE Product IF NOT EXISTS", is_command=True)
     db.query("sql", """
@@ -102,25 +103,26 @@ def main():
             }
         }
     """, is_command=True)
-    print("    [OK] Created document type 'Product' and inserted laptop")
-    
-    # Graph operations
+    products = db.query("sql", "SELECT FROM Product")
+    print(f"    [OK] Created document type 'Product' and inserted {len(products)} product(s)")
+
+    # Graph operations (edges connect vertex types only - both ends must be VERTEX TYPE)
     print("\n[8] Graph operations...")
     db.query("sql", "CREATE VERTEX TYPE Customer IF NOT EXISTS", is_command=True)
+    db.query("sql", "CREATE VERTEX TYPE ItemType IF NOT EXISTS", is_command=True)
     db.query("sql", "CREATE EDGE TYPE Purchased IF NOT EXISTS", is_command=True)
     db.query("sql", "INSERT INTO Customer SET name = 'Alice'", is_command=True)
-    print("    [OK] Created graph types and customer")
-    
-    try:
-        db.query("sql", """
-            CREATE EDGE Purchased 
-            FROM (SELECT FROM Customer WHERE name = 'Alice')
-            TO (SELECT FROM Product WHERE name = 'Laptop')
-            SET date = sysdate(), amount = 999.99
-        """, is_command=True)
-        print("    [OK] Created purchase edge")
-    except Exception as e:
-        print(f"    Note: Edge creation may require vertex types: {e}")
+    db.query("sql", "INSERT INTO ItemType SET name = 'Laptop', price = 999.99", is_command=True)
+    print("    [OK] Created vertex types Customer and ItemType, and edge type Purchased")
+    db.query("sql", """
+        CREATE EDGE Purchased
+        FROM (SELECT FROM Customer WHERE name = 'Alice')
+        TO (SELECT FROM ItemType WHERE name = 'Laptop')
+        SET date = sysdate(), amount = 999.99
+    """, is_command=True)
+    print("    [OK] Created purchase edge from Alice to Laptop")
+    traversal = db.query("sql", "SELECT expand(out('Purchased')) FROM Customer WHERE name = 'Alice'")
+    print(f"    [OK] Traversal found {len(traversal)} purchased item(s)")
     
     # Key-Value operations
     print("\n[9] Key-Value operations...")
@@ -157,17 +159,33 @@ def main():
     # Vector Search
     print("\n[11] Vector operations...")
     db.query("sql", "CREATE VERTEX TYPE DocRecord IF NOT EXISTS", is_command=True)
+    db.query("sql", "CREATE PROPERTY DocRecord.embedding IF NOT EXISTS ARRAY_OF_FLOATS", is_command=True)
+    db.create_vector_index("DocRecord", "embedding", dimensions=4)
     db.query("sql", """
-        INSERT INTO DocRecord SET 
-        title = 'AI Research Paper',
-        embedding = [0.1, 0.2, 0.3, 0.4, 0.5],
-        content = 'Full document text...'
+        INSERT INTO DocRecord CONTENT {
+            "title": "AI Research Paper",
+            "embedding": [0.1, 0.2, 0.3, 0.4],
+            "content": "Full document text..."
+        }
     """, is_command=True)
-    
-    documents = db.query("sql", "SELECT title, embedding FROM DocRecord")
-    print(f"    [OK] Stored {len(documents)} documents with embeddings:")
-    for doc in documents:
-        print(f"      - {doc['title']} (embedding dim: {len(doc['embedding'])})")
+    db.query("sql", """
+        INSERT INTO DocRecord CONTENT {
+            "title": "Machine Learning Guide",
+            "embedding": [0.9, 0.8, 0.7, 0.6],
+            "content": "Intro to ML..."
+        }
+    """, is_command=True)
+    print("    [OK] Created DocRecord type with vector index (4 dimensions)")
+
+    results = db.vector_search(
+        type_name="DocRecord",
+        embedding_field="embedding",
+        query_embedding=[0.1, 0.2, 0.3, 0.4],
+        top_k=2
+    )
+    print(f"    [OK] Vector search returned {len(results)} result(s):")
+    for doc in results:
+        print(f"      - {doc['title']}")
     
     # ========================================================================
     # Summary
@@ -176,8 +194,8 @@ def main():
     print("Summary")
     print("=" * 70)
     print(f"[OK] Database: {database_name}")
-    print(f"[OK] Types created: Person, Product, Customer, Settings, Sensor, DocRecord")
-    print(f"[OK] Edges created: Purchased")
+    print(f"[OK] Types created: Person, Product (document), Customer, ItemType, Settings, Sensor, DocRecord (vector)")
+    print(f"[OK] Edges created: Purchased (Customer -> ItemType)")
     print(f"[OK] All operations completed successfully!")
     print("\n" + "=" * 70)
     
@@ -185,15 +203,20 @@ def main():
     cleanup = input("\nClean up test data? (y/N): ").strip().lower()
     if cleanup == 'y':
         print("\nCleaning up...")
-        types_to_clean = ["Person", "Product", "Customer", "Settings", "Sensor", "DocRecord", "Purchased"]
+        # Drop DocRecord with its vector index first (UNSAFE drops the type and all indexes)
+        try:
+            db.query("sql", "DROP TYPE DocRecord UNSAFE", is_command=True)
+            print("    [OK] Dropped DocRecord (with vector index)")
+        except Exception:
+            pass
+        types_to_clean = ["Person", "Product", "Purchased", "Customer", "ItemType", "Settings", "Sensor"]
         for type_name in types_to_clean:
             try:
                 result = db.query("sql", f"DELETE FROM {type_name}", is_command=True)
                 count = result[0]['count'] if result and len(result) > 0 and 'count' in result[0] else 0
                 if count > 0:
                     print(f"    [OK] Deleted {count} records from {type_name}")
-            except Exception as e:
-                # Type might not exist, which is fine
+            except Exception:
                 pass
         print("    [OK] Cleanup complete")
 

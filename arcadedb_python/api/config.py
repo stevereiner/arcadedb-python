@@ -16,7 +16,7 @@ ARCADE_BASE_TRANSACTION_BEGIN_ENDPOINT = f"{ARCADE_BASE_ENDPOINT}/begin"
 ARCADE_BASE_TRANSACTION_COMMIT_ENDPOINT = f"{ARCADE_BASE_ENDPOINT}/commit"
 ARCADE_BASE_TRANSACTION_ROLLBACK_ENDPOINT = f"{ARCADE_BASE_ENDPOINT}/rollback"
 
-AVAILABLE_LANGUAGES = {"sql", "sqlscript", "graphql", "cypher", "gremlin", "mongo"}
+AVAILABLE_LANGUAGES = {"sql", "sqlscript", "graphql", "opencypher", "gremlin", "mongo"}
 
 API_RETRY_MAX = int(_get_env_variable("ARCADE_API_RETRY_MAX", "3"))
 API_RETRY_DELAY = int(_get_env_variable("ARCADE_API_RETRY_DELAY", "1"))

@@ -160,7 +160,7 @@ query(
 ```
 
 **Parameters:**
-- `language` (str): Query language ("sql", "sqlscript", "graphql", "cypher", "gremlin", "mongo")
+- `language` (str): Query language ("sql", "sqlscript", "graphql", "opencypher", "gremlin", "mongo")
 - `command` (str): The query/command to execute
 - `limit` (int, optional): Maximum number of results
 - `params` (dict, optional): Query parameters
@@ -626,7 +626,7 @@ export ARCADE_API_RETRY_BACKOFF=2
 - `sql` - SQL (default)
 - `sqlscript` - SQL Script
 - `graphql` - GraphQL
-- `cypher` - openCypher
+- `opencypher` - openCypher (native engine; use this, not `"cypher"`)
 - `gremlin` - Gremlin
 - `mongo` - MongoDB Query Language
 

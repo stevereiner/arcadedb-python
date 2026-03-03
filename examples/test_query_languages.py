@@ -25,19 +25,19 @@ def test_cypher():
     print("[OK] Created database:", db_name)
     
     # Create nodes
-    db.query("cypher", "CREATE (p:Person {name: 'John', age: 30})", is_command=True)
-    db.query("cypher", "CREATE (p:Person {name: 'Jane', age: 25})", is_command=True)
+    db.query("opencypher", "CREATE (p:Person {name: 'John', age: 30})", is_command=True)
+    db.query("opencypher", "CREATE (p:Person {name: 'Jane', age: 25})", is_command=True)
     print("[OK] Created Person nodes")
     
     # Create relationship
-    db.query("cypher", """
+    db.query("opencypher", """
         MATCH (a:Person {name: 'John'}), (b:Person {name: 'Jane'})
         CREATE (a)-[:KNOWS]->(b)
     """, is_command=True)
     print("[OK] Created KNOWS relationship")
     
-    # Query with Cypher
-    result = db.query("cypher", "MATCH (p:Person) RETURN p.name, p.age ORDER BY p.age")
+    # Query with openCypher
+    result = db.query("opencypher", "MATCH (p:Person) RETURN p.name, p.age ORDER BY p.age")
     print(f"[OK] Query returned {len(result)} results:")
     for row in result:
         print(f"    - {row}")

@@ -6,7 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.3.1] - 20025-10-21
+## [0.4.0] - 2026-03-03
+
+### Added
+- **Native openCypher engine**: use `"opencypher"` as the language — this targets ArcadeDB's native openCypher implementation; the old `"cypher"` identifier (Gremlin-based) is superseded
+- **Vector index support**: `create_vector_index()` uses the new LSM_VECTOR / JVector index type; vector property type is `ARRAY_OF_FLOATS` (underscore form, per ArcadeDB manual; `LIST OF FLOAT` and `ARRAY OF FLOATS` are also valid); `vector_search()` uses `vectorNeighbors()` for top-k similarity search; `get_vector_similarity()` supports `vectorCosineSimilarity`, `vectorDotProduct`, `vectorL2Distance`
+- **Logging**: per-module logging via `logging.getLogger(__name__)`; `configure_logging()` and `set_module_log_level()` utilities in `arcadedb_python.logging_config`
+- **`sqlscript` language** added to `AVAILABLE_LANGUAGES` in `config.py`; `bulk_insert`, `bulk_upsert`, `bulk_delete` use it for multi-statement batches
+- **Full live integration test suite** (`tests/test_integration_database.py`): 59 tests covering all public methods including transactions, bulk ops, vector ops, `get_records`, `get_triplets`, `safe_delete_all`, `safe_bulk_operation` (requires running ArcadeDB)
+- **`docs/LOGGING.md`**: logging configuration guide
+
+### Fixed
+- `bulk_insert`, `bulk_upsert`, `bulk_delete`: batch exceptions were silently swallowed when a prior batch had succeeded; they now always propagate immediately; per-batch success count also fixed to track failures per batch, not cumulatively
+- `CREATE PROPERTY` with `IF NOT EXISTS` can cause `Type not found` errors in some contexts — avoid it inside `sqlscript`; use separate `sql` calls instead
+- `cypher_formater`: robust fallback when pygments is unavailable; handles list and `$`-containing string params correctly
+- Error response parsing improved in `sync.py` for non-JSON HTTP error bodies
+- `get_triplets`: multi-strategy fallback (MATCH → edge traversal → per-type query) to handle varied ArcadeDB configurations
+
+### Changed
+- `sync.py`: embedding arrays in log output are truncated to avoid cluttering logs
+
+
+## [0.3.1] - 2025-10-21
 
 **Bug fixes for 0.3.1, README.md now has correct Quick Start Code, docs/API.md added, examples added**
 

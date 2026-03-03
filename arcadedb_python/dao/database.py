@@ -7,6 +7,7 @@ from enum import Enum
 import re
 import json
 import logging
+logger = logging.getLogger(__name__)
 try:
     import psycopg
     PSYCOPG_AVAILABLE = True
@@ -37,8 +38,6 @@ try:
 except ImportError:
     PYGMENTS_AVAILABLE = False
     cypher_lexer = None
-
-# Removed - now handled in the import section above
 
 
 class DatabaseDao:
@@ -258,7 +257,7 @@ class DatabaseDao:
         if serializer not in {None, "graph", "record"}:
             raise ValidationException("Serializer must be None, 'graph' or 'record'")
         
-        if language == "cypher" and params:
+        if language == "opencypher" and params:
             command, new_params = self.cypher_formater(command, params)
             params = new_params if len(new_params) > 0 else None
         payload = {
@@ -291,7 +290,7 @@ class DatabaseDao:
                     e.is_idempotent_error and 
                     not is_command):
                     
-                    logging.info(f"Retrying non-idempotent query as command: {command[:100]}...")
+                    logger.info(f"Retrying non-idempotent query as command: {command[:100]}...")
                     
                     try:
                         # Retry as a command
@@ -375,10 +374,10 @@ class DatabaseDao:
                 result = self.query("sql", f"TRUNCATE TYPE {type_name} UNSAFE", 
                                   session_id=session_id, is_command=True, 
                                   retry_on_idempotent_error=False)
-                logging.info(f"Successfully truncated type {type_name}")
+                logger.info(f"Successfully truncated type {type_name}")
                 return 0  # TRUNCATE doesn't return count
             except Exception as truncate_error:
-                logging.debug(f"TRUNCATE failed for {type_name}: {truncate_error}")
+                logger.debug(f"TRUNCATE failed for {type_name}: {truncate_error}")
                 
             # Fallback to batched deletion
             while True:
@@ -399,10 +398,10 @@ class DatabaseDao:
                             self.query("sql", delete_query, session_id=session_id, 
                                      is_command=True, retry_on_idempotent_error=False)
                             total_deleted += len(rids)
-                            logging.debug(f"Deleted batch of {len(rids)} records from {type_name}")
+                            logger.debug(f"Deleted batch of {len(rids)} records from {type_name}")
                     
                 except Exception as batch_error:
-                    logging.error(f"Batch deletion failed for {type_name}: {batch_error}")
+                    logger.error(f"Batch deletion failed for {type_name}: {batch_error}")
                     break
                     
             return total_deleted
@@ -447,7 +446,7 @@ class DatabaseDao:
                     if (isinstance(e, TransactionException) and e.is_idempotent_error) or \
                        (isinstance(e, BulkOperationException) and e.failed_records < e.total_records):
                         
-                        logging.warning(f"Bulk operation attempt {attempt + 1} failed, retrying in {retry_delay}s: {e}")
+                        logger.warning(f"Bulk operation attempt {attempt + 1} failed, retrying in {retry_delay}s: {e}")
                         time.sleep(retry_delay)
                         retry_delay *= 1.5  # Exponential backoff
                         continue
@@ -554,7 +553,7 @@ class DatabaseDao:
                     return result if isinstance(result, list) else [result] if result else []
                     
                 except QueryParsingException:
-                    logging.debug("UNION query failed, falling back to individual queries")
+                    logger.debug("UNION query failed, falling back to individual queries")
                     
                 # Approach 2: Individual queries and merge results
                 for type_name in type_names:
@@ -575,7 +574,7 @@ class DatabaseDao:
                                 all_results.append(result)
                                 
                     except Exception as e:
-                        logging.warning(f"Query failed for type {type_name}: {e}")
+                        logger.warning(f"Query failed for type {type_name}: {e}")
                         continue
                 
                 # Apply final limit if specified
@@ -645,7 +644,7 @@ class DatabaseDao:
                 return result if isinstance(result, list) else [result] if result else []
                 
             except QueryParsingException:
-                logging.debug("MATCH query failed, falling back to edge traversal")
+                logger.debug("MATCH query failed, falling back to edge traversal")
                 
             # Approach 2: Use edge traversal
             try:
@@ -690,17 +689,35 @@ class DatabaseDao:
                 return triplets
                 
             except Exception as e:
-                logging.debug(f"Edge traversal failed: {e}")
+                logger.debug(f"Edge traversal failed: {e}")
                 
-            # Approach 3: Simple edge listing
-            edge_query = "SELECT * FROM E"
-            if relation_types:
-                edge_filter = " OR ".join([f"@class = '{t}'" for t in relation_types])
-                edge_query += f" WHERE ({edge_filter})"
-            if limit:
-                edge_query += f" LIMIT {limit}"
-                
-            edges = self.query("sql", edge_query, session_id=session_id)
+            # Approach 3: Query each edge type directly (avoids relying on base 'E' type)
+            all_edges = []
+            edge_types_to_query = relation_types if relation_types else []
+            if edge_types_to_query:
+                for et in edge_types_to_query:
+                    try:
+                        q = f"SELECT * FROM {et}"
+                        if limit:
+                            q += f" LIMIT {limit}"
+                        partial = self.query("sql", q, session_id=session_id)
+                        if partial:
+                            all_edges.extend(partial if isinstance(partial, list) else [partial])
+                    except Exception:
+                        continue
+            else:
+                # No relation types specified — best-effort query on base E type
+                try:
+                    q = "SELECT * FROM E"
+                    if limit:
+                        q += f" LIMIT {limit}"
+                    partial = self.query("sql", q, session_id=session_id)
+                    if partial:
+                        all_edges.extend(partial if isinstance(partial, list) else [partial])
+                except Exception:
+                    pass
+
+            edges = all_edges
             
             # Return edges in triplet format (without full vertex data)
             triplets = []
@@ -744,18 +761,19 @@ class DatabaseDao:
             raise ValidationException("Records must be a list of dictionaries")
             
         total_inserted = 0
-        failed_records = 0
+        total_failed = 0
         
         # Process records in batches
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
+            batch_failed = 0
             
             try:
                 # Build INSERT statements for the batch
                 insert_statements = []
                 for record in batch:
                     if not isinstance(record, dict):
-                        failed_records += 1
+                        batch_failed += 1
                         continue
                         
                     # Build property assignments
@@ -776,28 +794,25 @@ class DatabaseDao:
                         insert_statements.append(f"INSERT INTO {type_name} SET {prop_str}")
                 
                 if insert_statements:
-                    # Execute batch as a transaction
                     batch_query = "; ".join(insert_statements)
-                    result = self.query("sql", batch_query, session_id=session_id, is_command=True)
-                    
-                    # Count successful inserts (this is approximate)
-                    batch_success = len(batch) - failed_records
-                    total_inserted += batch_success
+                    self.query("sqlscript", batch_query, session_id=session_id, is_command=True)
+                
+                batch_success = len(batch) - batch_failed
+                total_inserted += batch_success
+                total_failed += batch_failed
                     
             except Exception as e:
-                failed_records += len(batch)
-                if failed_records == len(records):
-                    # If all records failed, raise exception
-                    raise BulkOperationException(
-                        f"Bulk insert failed for type {type_name}",
-                        failed_records=failed_records,
-                        total_records=len(records)
-                    ) from e
+                total_failed += len(batch)
+                raise BulkOperationException(
+                    f"Bulk insert failed for type {type_name}",
+                    failed_records=total_failed,
+                    total_records=len(records)
+                ) from e
         
-        if failed_records > 0:
+        if total_failed > 0:
             raise BulkOperationException(
                 f"Bulk insert partially failed for type {type_name}",
-                failed_records=failed_records,
+                failed_records=total_failed,
                 total_records=len(records)
             )
             
@@ -832,18 +847,19 @@ class DatabaseDao:
             raise ValidationException("Key field is required for upsert operations")
             
         total_upserted = 0
-        failed_records = 0
+        total_failed = 0
         
         # Process records in batches
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
+            batch_failed = 0
             
             try:
                 # Build UPSERT statements for the batch
                 upsert_statements = []
                 for record in batch:
                     if not isinstance(record, dict) or key_field not in record:
-                        failed_records += 1
+                        batch_failed += 1
                         continue
                         
                     # Build property assignments
@@ -872,28 +888,25 @@ class DatabaseDao:
                         upsert_statements.append(f"UPDATE {type_name} SET {prop_str} UPSERT WHERE {key_condition}")
                 
                 if upsert_statements:
-                    # Execute batch as a transaction
                     batch_query = "; ".join(upsert_statements)
-                    result = self.query("sql", batch_query, session_id=session_id, is_command=True)
-                    
-                    # Count successful upserts (this is approximate)
-                    batch_success = len(batch) - failed_records
-                    total_upserted += batch_success
+                    self.query("sqlscript", batch_query, session_id=session_id, is_command=True)
+                
+                batch_success = len(batch) - batch_failed
+                total_upserted += batch_success
+                total_failed += batch_failed
                     
             except Exception as e:
-                failed_records += len(batch)
-                if failed_records == len(records):
-                    # If all records failed, raise exception
-                    raise BulkOperationException(
-                        f"Bulk upsert failed for type {type_name}",
-                        failed_records=failed_records,
-                        total_records=len(records)
-                    ) from e
+                total_failed += len(batch)
+                raise BulkOperationException(
+                    f"Bulk upsert failed for type {type_name}",
+                    failed_records=total_failed,
+                    total_records=len(records)
+                ) from e
         
-        if failed_records > 0:
+        if total_failed > 0:
             raise BulkOperationException(
                 f"Bulk upsert partially failed for type {type_name}",
-                failed_records=failed_records,
+                failed_records=total_failed,
                 total_records=len(records)
             )
             
@@ -941,45 +954,43 @@ class DatabaseDao:
             raise ValidationException("Conditions must be a list of strings")
             
         total_deleted = 0
-        failed_conditions = 0
+        total_failed = 0
         
         # Process conditions in batches
         for i in range(0, len(conditions), batch_size):
             batch = conditions[i:i + batch_size]
+            batch_failed = 0
             
             try:
                 # Build DELETE statements for the batch
                 delete_statements = []
                 for condition in batch:
                     if not isinstance(condition, str):
-                        failed_conditions += 1
+                        batch_failed += 1
                         continue
                         
                     delete_statements.append(f"DELETE FROM {type_name} WHERE {condition}")
                 
                 if delete_statements:
-                    # Execute batch as a transaction
                     batch_query = "; ".join(delete_statements)
-                    result = self.query("sql", batch_query, session_id=session_id, is_command=True)
-                    
-                    # Count successful deletes (this is approximate)
-                    batch_success = len(batch) - failed_conditions
-                    total_deleted += batch_success
+                    self.query("sqlscript", batch_query, session_id=session_id, is_command=True)
+                
+                batch_success = len(batch) - batch_failed
+                total_deleted += batch_success
+                total_failed += batch_failed
                     
             except Exception as e:
-                failed_conditions += len(batch)
-                if failed_conditions == len(conditions):
-                    # If all conditions failed, raise exception
-                    raise BulkOperationException(
-                        f"Bulk delete failed for type {type_name}",
-                        failed_records=failed_conditions,
-                        total_records=len(conditions)
-                    ) from e
+                total_failed += len(batch)
+                raise BulkOperationException(
+                    f"Bulk delete failed for type {type_name}",
+                    failed_records=total_failed,
+                    total_records=len(conditions)
+                ) from e
         
-        if failed_conditions > 0:
+        if total_failed > 0:
             raise BulkOperationException(
                 f"Bulk delete partially failed for type {type_name}",
-                failed_records=failed_conditions,
+                failed_records=total_failed,
                 total_records=len(conditions)
             )
             
@@ -1057,7 +1068,7 @@ class DatabaseDao:
                     self.rollback_transaction(session_id)
                 except Exception as rollback_error:
                     # Log rollback error but don't mask the original error
-                    logging.error(f"Failed to rollback transaction {session_id}: {rollback_error}")
+                    logger.error(f"Failed to rollback transaction {session_id}: {rollback_error}")
             
             raise TransactionException(
                 f"Transaction failed: {str(e)}",
@@ -1096,25 +1107,50 @@ class DatabaseDao:
             raise ValidationException("top_k must be a positive integer")
             
         try:
-            # Convert embedding to JSON string for the query
             embedding_json = json.dumps(query_embedding)
-            
-            # Build the vector search query
-            # Using cosine similarity as default - ArcadeDB supports various distance functions
-            base_query = f"""
-            SELECT *, cosine_similarity({embedding_field}, {embedding_json}) as similarity_score
-            FROM {type_name}
-            """
-            
-            if where_clause:
-                base_query += f" WHERE {where_clause}"
-                
-            base_query += f" ORDER BY similarity_score DESC LIMIT {top_k}"
-            
-            result = self.query("sql", base_query, session_id=session_id)
-            
-            return result if isinstance(result, list) else [result] if result else []
-            
+
+            # Use the SELECT form of vectorNeighbors which returns an array of
+            # {record, distance} objects. distance=0 means exact match (closest),
+            # so a WHERE-clause threshold would wrongly exclude exact matches.
+            index_name = f"{type_name}[{embedding_field}]"
+            base_query = (
+                f"SELECT vectorNeighbors('{index_name}', {embedding_json}, {top_k})"
+                f" AS neighbors FROM {type_name} LIMIT 1"
+            )
+
+            raw = self.query("sql", base_query, session_id=session_id)
+
+            if not raw or not isinstance(raw, list):
+                return []
+
+            neighbors = raw[0].get("neighbors", []) if raw[0] else []
+            if not isinstance(neighbors, list):
+                return []
+
+            results = []
+            for nb in neighbors:
+                if not isinstance(nb, dict):
+                    continue
+                record = nb.get("record", {})
+                if where_clause:
+                    # Re-fetch the record applying the WHERE filter
+                    rid = record.get("@rid", "")
+                    if not rid:
+                        continue
+                    try:
+                        check = self.query(
+                            "sql",
+                            f"SELECT * FROM {type_name} WHERE @rid = '{rid}' AND ({where_clause})",
+                            session_id=session_id,
+                        )
+                        if not check:
+                            continue
+                    except Exception:
+                        continue
+                results.append(record)
+
+            return results
+
         except Exception as e:
             raise VectorOperationException(
                 f"Vector search failed for type {type_name}",
@@ -1148,33 +1184,19 @@ class DatabaseDao:
             raise ValidationException("Property name must be a non-empty string")
             
         try:
-            # Create vector index - syntax may vary based on ArcadeDB version
-            index_name = f"{type_name}_{property_name}_vector_idx"
-            
-            # Try different vector index syntaxes based on ArcadeDB capabilities
-            create_queries = [
-                # Modern vector index syntax
-                f"CREATE INDEX {index_name} ON {type_name} ({property_name}) VECTOR {index_type} DIMENSIONS {dimensions}",
-                # Alternative syntax
-                f"CREATE INDEX {index_name} ON {type_name} ({property_name}) VECTOR({dimensions})",
-                # Fallback to regular index
-                f"CREATE INDEX {index_name} ON {type_name} ({property_name})"
-            ]
-            
-            last_error = None
-            for query in create_queries:
-                try:
-                    result = self.query("sql", query, session_id=session_id, is_command=True)
-                    logging.info(f"Created vector index {index_name} using query: {query}")
-                    return True
-                except Exception as e:
-                    last_error = e
-                    logging.debug(f"Vector index creation failed with query '{query}': {e}")
-                    continue
-            
-            # If all queries failed, raise the last error
-            raise last_error
-            
+            # LSMVectorIndex syntax introduced with JVector 4.0 (ArcadeDB latest)
+            similarity = "COSINE" if index_type.upper() in ("HNSW", "LSM_VECTOR", "COSINE") else index_type.upper()
+            create_query = (
+                f"CREATE INDEX ON {type_name} ({property_name}) LSM_VECTOR METADATA {{"
+                f" dimensions: {dimensions},"
+                f" similarity: '{similarity}'"
+                f" }}"
+            )
+            result = self.query("sql", create_query, session_id=session_id, is_command=True)
+            logger.info(f"Created LSM_VECTOR index on {type_name}.{property_name} "
+                        f"(dimensions={dimensions}, similarity={similarity})")
+            return True
+
         except Exception as e:
             raise VectorOperationException(
                 f"Failed to create vector index on {type_name}.{property_name}",
@@ -1210,23 +1232,29 @@ class DatabaseDao:
             raise ValidationException("Query embedding must contain only numeric values")
             
         try:
-            # Convert embedding to JSON string for the query
             embedding_json = json.dumps(query_embedding)
-            
-            # Build similarity query
-            query = f"""
-            SELECT {similarity_function}({embedding_field}, {embedding_json}) as similarity
-            FROM {type_name}
-            WHERE @rid = '{record_id}'
-            """
-            
+
+            # Map legacy/generic names to the ArcadeDB SQL vector functions
+            _func_map = {
+                "cosine_similarity": "vectorCosineSimilarity",
+                "dot_product": "vectorDotProduct",
+                "euclidean": "vectorL2Distance",
+                "l2": "vectorL2Distance",
+            }
+            func = _func_map.get(similarity_function.lower(), similarity_function)
+
+            query = (
+                f"SELECT {func}({embedding_field}, {embedding_json}) AS similarity"
+                f" FROM {type_name}"
+                f" WHERE @rid = '{record_id}'"
+            )
+
             result = self.query("sql", query, session_id=session_id)
-            
+
             if result and isinstance(result, list) and len(result) > 0:
                 return float(result[0].get('similarity', 0.0))
-            else:
-                return 0.0
-                
+            return 0.0
+
         except Exception as e:
             raise VectorOperationException(
                 f"Failed to calculate vector similarity for record {record_id}",
@@ -1282,7 +1310,7 @@ class DatabaseDao:
                 
             except Exception as e:
                 failed_searches += 1
-                logging.error(f"Vector search {i} failed: {e}")
+                logger.error(f"Vector search {i} failed: {e}")
                 results.append([])  # Empty result for failed search
                 
         if failed_searches == len(searches):

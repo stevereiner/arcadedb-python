@@ -151,15 +151,19 @@ class TestVectorOperations:
     def test_vector_search_success(self, mock_db):
         """Test successful vector similarity search."""
         query_embedding = [0.1, 0.2, 0.3]
-        mock_results = [
-            {"id": "1", "name": "doc1", "similarity_score": 0.95},
-            {"id": "2", "name": "doc2", "similarity_score": 0.87}
+        record1 = {"id": "1", "name": "doc1", "similarity_score": 0.95}
+        record2 = {"id": "2", "name": "doc2", "similarity_score": 0.87}
+        # vector_search uses the SELECT vectorNeighbors(...) AS neighbors form,
+        # which returns [{neighbors: [{record: ..., distance: ...}, ...]}]
+        mock_db.query.return_value = [
+            {"neighbors": [
+                {"record": record1, "distance": 0.05},
+                {"record": record2, "distance": 0.13},
+            ]}
         ]
-        
-        mock_db.query.return_value = mock_results
-        
+
         results = mock_db.vector_search("Document", "embedding", query_embedding, top_k=2)
-        
+
         assert len(results) == 2
         assert results[0]["similarity_score"] == 0.95
         mock_db.query.assert_called_once()
@@ -322,8 +326,8 @@ class TestTransactionManagement:
         db = DatabaseDao(client, "test_db")
         return db
     
-    @patch('arcadedb_python.dao.database.logging')
-    def test_query_retry_on_idempotent_error(self, mock_logging, mock_db):
+    @patch('arcadedb_python.dao.database.logger')
+    def test_query_retry_on_idempotent_error(self, mock_logger, mock_db):
         """Test automatic retry of non-idempotent queries as commands."""
         # Mock the client.post method to simulate the retry behavior
         mock_db.client.post = Mock()
@@ -339,7 +343,7 @@ class TestTransactionManagement:
         
         assert result == success_result
         assert mock_db.client.post.call_count == 2
-        mock_logging.info.assert_called()
+        mock_logger.info.assert_called()
     
     def test_safe_delete_all_truncate_success(self, mock_db):
         """Test safe delete all with successful TRUNCATE."""

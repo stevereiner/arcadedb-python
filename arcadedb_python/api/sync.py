@@ -6,6 +6,8 @@ import logging
 import requests
 import re
 
+logger = logging.getLogger(__name__)
+
 
 def _filter_payload_for_log(payload: dict, max_chars: int = 500) -> dict:
     """Filter payload for logging by truncating embedding data to avoid cluttering logs.
@@ -70,14 +72,14 @@ class SyncClient(Client):
                     'exception': 'HTTPException'
                 }
             
-            logging.error(f"ArcadeDB Error Response: {json_decoded_data}")
+            logger.error(f"ArcadeDB Error Response: {json_decoded_data}")
             
             # Use the new exception parsing system
             exception = parse_error_response(json_decoded_data, query=query)
             raise exception
         
         response.raise_for_status()
-        logging.debug(f"response: {response.text}")
+        logger.debug(f"response: {response.text}")
         if return_headers is False:
             if len(response.text) > 0:
                 try:
@@ -92,7 +94,7 @@ class SyncClient(Client):
     def post(self, endpoint: str, payload: dict, return_headers: bool=False, extra_headers: dict = {}) -> requests.Response:
         endpoint = self._get_endpoint(endpoint)
         filtered_payload = _filter_payload_for_log(payload)
-        logging.debug(f"posting to {endpoint} with payload {filtered_payload}")
+        logger.debug(f"posting to {endpoint} with payload {filtered_payload}")
         response = requests.post(
             endpoint,
             data=json.dumps(payload),
@@ -105,7 +107,7 @@ class SyncClient(Client):
 
     def get(self, endpoint: str, return_headers: bool=False, extra_headers: dict = {}) -> requests.Response:
         endpoint = self._get_endpoint(endpoint)
-        logging.debug(f"submitting get request to {endpoint}")
+        logger.debug(f"submitting get request to {endpoint}")
         response = requests.get(
             endpoint,
             auth=(self.username, self.password),
